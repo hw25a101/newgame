@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ultimate Breakout - Rocket Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            background: #1e293b;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            max-width: 95%;
+            max-height: 85vh;
+            cursor: crosshair;
+        }
+        .ui-overlay {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            padding: 20px;
+            color: white;
+            font-weight: bold;
+        }
+        .score-box {
+            display: flex;
+            flex-direction: column;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        #menu-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 30;
+        }
+        .btn {
+            background: #3b82f6;
+            color: white;
+            padding: 12px 40px;
+            border-radius: 8px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            margin: 8px;
+            width: 280px;
+            text-align: center;
+            pointer-events: auto;
+        }
+        .btn:hover { background: #2563eb; transform: scale(1.05); }
+        .btn-secondary { background: #64748b; }
+        .btn-accent { background: #f43f5e; }
+        .btn-test { background: #10b981; }
+        
+        .hidden { display: none !important; }
+        .bomb-indicator {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .rocket-icon {
+            width: 14px;
+            height: 20px;
+            position: relative;
+            background: #eab308;
+            border-radius: 50% 50% 2px 2px;
+            box-shadow: 0 0 8px rgba(234, 179, 8, 0.5);
+        }
+        .rocket-icon::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 6px solid #f97316;
+        }
+        .rocket-icon.empty {
+            background: #475569;
+            box-shadow: none;
+        }
+        .rocket-icon.empty::after {
+            border-top-color: #334155;
+        }
+
+        .result-container {
+            text-align: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        #test-indicator {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #10b981;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .esc-hint {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: rgba(255,255,255,0.3);
+            font-size: 0.7rem;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="game-ui" class="ui-overlay hidden justify-between">
+        <div id="test-indicator" class="hidden">Test Mode (Infinite Lives & Bombs)</div>
+        <div id="left-ui" class="score-box text-blue-400 items-start">
+            <span id="p1-label">PLAYER 1</span>
+            <span class="text-2xl">SCORE: <span id="p1-score">0</span></span>
+            <span id="p1-lives-container">LIVES: <span id="p1-lives">5</span></span>
+            <div id="p1-bombs" class="bomb-indicator"></div>
+        </div>
+        <div id="right-ui" class="score-box text-rose-400 items-end">
+            <span id="p2-label">PLAYER 2 / AI</span>
+            <span class="text-2xl">SCORE: <span id="p2-score">0</span></span>
+            <span id="p2-lives-container">LIVES: <span id="p2-lives">5</span></span>
+            <div id="p2-bombs" class="bomb-indicator"></div>
+        </div>
+        <div class="esc-hint">ESC キーでメニューに戻る (クリックで操作開始)</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="menu-screen">
+        <div id="result-ui" class="result-container mb-8 hidden">
+            <h2 id="result-status" class="text-6xl font-black mb-2 italic">WINNER!</h2>
+            <div id="result-details" class="text-xl text-slate-300 mb-6">Score: 1200 vs 800</div>
+        </div>
+
+        <h1 id="menu-title" class="text-5xl font-extrabold mb-8 text-blue-400 text-center">BREAKOUT ROCKET<br><span class="text-2xl font-normal text-slate-400">TACTICAL EDITION</span></h1>
+        
+        <div class="flex flex-col items-center">
+            <button onclick="initGame('solo')" class="btn btn-secondary">SOLO MODE (Vertical)</button>
+            <button onclick="initGame('vs_player')" class="btn">VS PLAYER (Horizontal)</button>
+            <button onclick="initGame('vs_ai')" class="btn btn-accent">VS AI (Horizontal)</button>
+            <button onclick="initGame('test')" class="btn btn-test">TEST MODE (VS AI + Infinity)</button>
+        </div>
+        
+        <div id="controls-desc" class="mt-8 text-slate-500 text-sm text-center bg-slate-800/50 p-4 rounded-lg">
+            <strong>操作方法</strong><br>
+            P1: W/Sキー または マウス (移動) + 左Shift (ロケット) | P2: 上下矢印 (移動) + 右Shift (ロケット)<br>
+            <span class="text-rose-400">ロケット直撃で相手を1秒間スタン（移動不能）！</span><br>
+            <span class="text-yellow-400">相手の奥壁に当たると相手スコア -50！</span><br>
+            <span class="text-slate-400">プレイ中: クリックでカーソル固定、ESCキーで解除してメニューへ</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gameUI = document.getElementById('game-ui');
+    const menuScreen = document.getElementById('menu-screen');
+    const menuTitle = document.getElementById('menu-title');
+    const resultUI = document.getElementById('result-ui');
+    const resultStatus = document.getElementById('result-status');
+    const resultDetails = document.getElementById('result-details');
+    const testIndicator = document.getElementById('test-indicator');
+    
+    const p1ScoreEl = document.getElementById('p1-score');
+    const p2ScoreEl = document.getElementById('p2-score');
+    const p1LivesEl = document.getElementById('p1-lives');
+    const p2LivesEl = document.getElementById('p2-lives');
+    const p1LivesContainer = document.getElementById('p1-lives-container');
+    const p2LivesContainer = document.getElementById('p2-lives-container');
+    const p1BombsEl = document.getElementById('p1-bombs');
+    const p2BombsEl = document.getElementById('p2-bombs');
+
+    const BALL_RADIUS = 8;
+    const PADDLE_THICKNESS = 12;
+    const PADDLE_LENGTH = 100;
+    const BRICK_PADDING = 4;
+    
+    const PADDLE_SPEED = 10; 
+    const INITIAL_BALL_SPEED = 5;
+    const MAX_BALL_SPEED = 13; 
+    const SPEED_INCREMENT = 1.01;
+    const BOMB_SPEED = 8;
+    
+    const STAN_DURATION = 60; 
+    const LONG_STAN_DURATION = 60; 
+
+    let gameMode = 'solo';
+    let isTestMode = false;
+    let score1 = 0, score2 = 0;
+    let lives1 = 5, lives2 = 5;
+    let bombs1 = 1, bombs2 = 1;
+    let scoreForNextBomb1 = 100, scoreForNextBomb2 = 100;
+    let stun1 = 0, stun2 = 0;
+    
+    let gameRunning = false;
+    let animationId;
+    let currentBaseSpeed = INITIAL_BALL_SPEED; 
+
+    let balls = [];
+    let activeBombs = [];
+    let activeExplosions = [];
+    let floatingTexts = [];
+    let p1Pos, p2Pos; 
+    let keys = {};
+
+    let bricks = [];
+    const brickColors = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa'];
+
+    const SOLO_COLS = 15;
+    const SOLO_ROWS = 10;
+    const VS_COLS = 5;
+    const VS_ROWS = 20;
+
+    function initBricks() {
+        bricks = [];
+        if (gameMode === 'solo') {
+            for (let c = 0; c < SOLO_COLS; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < SOLO_ROWS; r++) {
+                    bricks[c][r] = { status: 1, color: brickColors[r % brickColors.length] };
+                }
+            }
+        } else {
+            for (let c = 0; c < VS_COLS; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < VS_ROWS; r++) {
+                    bricks[c][r] = { status: 1, color: brickColors[c % brickColors.length] };
+                }
+            }
+        }
+    }
+
+    function updateBombUI() {
+        if (isTestMode) {
+            p1BombsEl.innerHTML = Array(3).fill(0).map(() => `<div class="rocket-icon"></div>`).join('');
+            p2BombsEl.innerHTML = Array(3).fill(0).map(() => `<div class="rocket-icon"></div>`).join('');
+            return;
+        }
+        p1BombsEl.innerHTML = Array(3).fill(0).map((_, i) => `<div class="rocket-icon ${i < bombs1 ? '' : 'empty'}"></div>`).join('');
+        p2BombsEl.innerHTML = Array(3).fill(0).map((_, i) => `<div class="rocket-icon ${i < bombs2 ? '' : 'empty'}"></div>`).join('');
+    }
+
+    function launchBomb(owner) {
+        if (owner === 1 && (isTestMode || bombs1 > 0)) {
+            if (stun1 > 0) return; 
+            if (!isTestMode) bombs1--;
+            activeBombs.push({
+                x: gameMode === 'solo' ? p1Pos + PADDLE_LENGTH/2 : 40,
+                y: gameMode === 'solo' ? canvas.height - 40 : p1Pos + PADDLE_LENGTH/2,
+                dx: gameMode === 'solo' ? 0 : BOMB_SPEED,
+                dy: gameMode === 'solo' ? -BOMB_SPEED : 0,
+                owner: 1,
+                rotation: gameMode === 'solo' ? -Math.PI/2 : 0
+            });
+        } else if (owner === 2 && (isTestMode || bombs2 > 0)) {
+            if (stun2 > 0) return; 
+            if (!isTestMode) bombs2--;
+            activeBombs.push({
+                x: canvas.width - 40,
+                y: p2Pos + PADDLE_LENGTH/2,
+                dx: -BOMB_SPEED,
+                dy: 0,
+                owner: 2,
+                rotation: Math.PI
+            });
+        }
+        updateBombUI();
+    }
+
+    function createFloatingText(x, y, text, color = "#f87171") {
+        floatingTexts.push({ x, y, text, color, life: 60 });
+    }
+
+    function drawRocket(ctx, x, y, rotation) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rotation);
+        
+        ctx.beginPath();
+        ctx.fillStyle = Math.random() > 0.5 ? "#f97316" : "#fbbf24";
+        ctx.moveTo(-12, 0);
+        ctx.lineTo(-20 - Math.random()*10, 0);
+        ctx.lineTo(-12, 4);
+        ctx.fill();
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.beginPath();
+        ctx.moveTo(-4, -6); ctx.lineTo(-8, -10); ctx.lineTo(0, -6); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-4, 6); ctx.lineTo(-8, 10); ctx.lineTo(0, 6); ctx.fill();
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 12, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = "#f43f5e";
+        ctx.beginPath();
+        ctx.ellipse(8, 0, 6, 5, 0, -Math.PI/2, Math.PI/2);
+        ctx.fill();
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.arc(2, 0, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function createExplosion(x, y, owner, isPaddleHit = false) {
+        let bw, bh, offL, offT, cols, rows;
+        if (gameMode === 'solo') {
+            bw = (canvas.width - 60 - (BRICK_PADDING * (SOLO_COLS - 1))) / SOLO_COLS;
+            bh = 15; offL = 30; offT = 60; cols = SOLO_COLS; rows = SOLO_ROWS;
+        } else {
+            bw = 15; bh = (canvas.height - 60 - (BRICK_PADDING * (VS_ROWS - 1))) / VS_ROWS;
+            offL = (canvas.width / 2) - ((VS_COLS * (bw + BRICK_PADDING)) / 2);
+            offT = 30; cols = VS_COLS; rows = VS_ROWS;
+        }
+
+        const visualRadius = Math.max(bw, bh) * 2;
+        activeExplosions.push({ x, y, radius: 0, maxRadius: visualRadius, life: 30, owner });
+        
+        if (gameMode !== 'solo') {
+            if (isPaddleHit) {
+                if (x < canvas.width / 2) {
+                    stun1 = LONG_STAN_DURATION;
+                    createFloatingText(x + 20, y, "STUNNED!", "#94a3b8");
+                } else {
+                    stun2 = LONG_STAN_DURATION;
+                    createFloatingText(x - 60, y, "STUNNED!", "#94a3b8");
+                }
+            } else {
+                const distP1 = Math.sqrt(Math.pow(x - 20, 2) + Math.pow(y - (p1Pos + PADDLE_LENGTH/2), 2));
+                const distP2 = Math.sqrt(Math.pow(x - (canvas.width - 20), 2) + Math.pow(y - (p2Pos + PADDLE_LENGTH/2), 2));
+                if (distP1 < visualRadius + PADDLE_LENGTH/2) stun1 = STAN_DURATION;
+                if (distP2 < visualRadius + PADDLE_LENGTH/2) stun2 = STAN_DURATION;
+            }
+        }
+
+        const centerCol = Math.floor((x - offL) / (bw + BRICK_PADDING));
+        const centerRow = Math.floor((y - offT) / (bh + BRICK_PADDING));
+        
+        for (let c = centerCol - 1; c <= centerCol + 1; c++) {
+            for (let r = centerRow - 1; r <= centerRow + 1; r++) {
+                if (c >= 0 && c < cols && r >= 0 && r < rows) {
+                    if (bricks[c][r].status === 1) {
+                        bricks[c][r].status = 0;
+                        if (owner === 1) { score1 += 10; p1ScoreEl.textContent = score1; }
+                        else { score2 += 10; p2ScoreEl.textContent = score2; }
+                    }
+                }
+            }
+        }
+        checkBombGrant();
+    }
+
+    function checkBombGrant() {
+        if (isTestMode) return;
+        if (score1 >= scoreForNextBomb1) {
+            if (bombs1 < 3) bombs1++;
+            scoreForNextBomb1 += 100;
+            updateBombUI();
+        }
+        if (score2 >= scoreForNextBomb2) {
+            if (bombs2 < 3) bombs2++;
+            scoreForNextBomb2 += 100;
+            updateBombUI();
+        }
+    }
+
+    function createBall(mode, targetDirection = null) {
+        let newBall = { x: canvas.width / 2, y: canvas.height / 2, dx: 0, dy: 0, color: '#ffffff' };
+        if (gameMode === 'solo') {
+            newBall.y = canvas.height - 60;
+            newBall.dx = (Math.random() - 0.5) * currentBaseSpeed * 1.5;
+            newBall.dy = -currentBaseSpeed;
+        } else {
+            if (targetDirection === 'left') { newBall.dx = -currentBaseSpeed; newBall.color = '#60a5fa'; }
+            else if (targetDirection === 'right') { newBall.dx = currentBaseSpeed; newBall.color = '#f43f5e'; }
+            else {
+                if (mode === 'left') { newBall.x = canvas.width * 0.25; newBall.dx = -currentBaseSpeed; newBall.color = '#60a5fa'; }
+                else if (mode === 'right') { newBall.x = canvas.width * 0.75; newBall.dx = currentBaseSpeed; newBall.color = '#f43f5e'; }
+            }
+            newBall.dy = (Math.random() - 0.5) * currentBaseSpeed * 2;
+        }
+        return newBall;
+    }
+
+    function redeployBall(index) {
+        const side = index % 2 === 0 ? 'left' : 'right';
+        balls[index] = createBall(side);
+    }
+
+    function resetGameBalls() {
+        balls = []; activeBombs = []; activeExplosions = []; floatingTexts = [];
+        currentBaseSpeed = INITIAL_BALL_SPEED;
+        if (gameMode === 'solo') balls.push(createBall('solo'));
+        else { balls.push(createBall('left')); balls.push(createBall('right')); }
+    }
+
+    function onBricksCleared() {
+        initBricks();
+        currentBaseSpeed = Math.min(currentBaseSpeed + 0.5, MAX_BALL_SPEED - 2);
+        balls.forEach(b => increaseBallSpeed(b, 1.05));
+    }
+
+    function increaseBallSpeed(ball, factor = SPEED_INCREMENT) {
+        const currentSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+        if (currentSpeed < MAX_BALL_SPEED) {
+            ball.dx *= factor; ball.dy *= factor;
+            const newSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+            if (newSpeed > MAX_BALL_SPEED) {
+                const ratio = MAX_BALL_SPEED / newSpeed;
+                ball.dx *= ratio; ball.dy *= ratio;
+            }
+        }
+    }
+
+    function resize() {
+        canvas.width = Math.min(window.innerWidth - 40, 800);
+        canvas.height = Math.min(window.innerHeight - 120, 600);
+        p1Pos = (gameMode === 'solo' ? canvas.width : canvas.height) / 2 - PADDLE_LENGTH / 2;
+        p2Pos = (gameMode === 'solo' ? canvas.width : canvas.height) / 2 - PADDLE_LENGTH / 2;
+    }
+
+    window.addEventListener('resize', () => { if(!gameRunning) resize(); });
+
+    document.addEventListener("keydown", (e) => {
+        keys[e.code] = true;
+        
+        if (e.code === 'Escape' && gameRunning) {
+            exitToMenu();
+            return;
+        }
+
+        if (e.code === 'ShiftLeft') launchBomb(1);
+        if (e.code === 'ShiftRight') {
+            if (gameMode === 'vs_player' || gameMode === 'test' || gameMode === 'vs_ai') launchBomb(2);
+            else if (gameMode === 'solo') launchBomb(1);
+        }
+    });
+
+    document.addEventListener("keyup", (e) => keys[e.code] = false);
+
+    // ポインターロックの利用 (マウスをステージ外に出さないようにする)
+    canvas.addEventListener("click", () => {
+        if (gameRunning) {
+            canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+            canvas.requestPointerLock();
+        }
+    });
+
+    document.addEventListener("mousemove", (e) => {
+        if (!gameRunning || stun1 > 0) return;
+        
+        // ポインターロック状態かどうかで処理を分岐
+        if (document.pointerLockElement === canvas || document.mozPointerLockElement === canvas) {
+            const movement = gameMode === 'solo' ? e.movementX : e.movementY;
+            p1Pos += movement;
+        } else {
+            // ロックされていない場合は通常の座標計算 (画面クリックを促す)
+            const rect = canvas.getBoundingClientRect();
+            if (gameMode === 'solo') p1Pos = (e.clientX - rect.left) - PADDLE_LENGTH / 2;
+            else p1Pos = (e.clientY - rect.top) - PADDLE_LENGTH / 2;
+        }
+
+        // 範囲制限
+        const limit = gameMode === 'solo' ? canvas.width : canvas.height;
+        if (p1Pos < 0) p1Pos = 0;
+        if (p1Pos > limit - PADDLE_LENGTH) p1Pos = limit - PADDLE_LENGTH;
+    });
+
+    function exitToMenu() {
+        gameRunning = false;
+        if (animationId) cancelAnimationFrame(animationId);
+        document.exitPointerLock = document.exitPointerLock || document.mozExitPointerLock;
+        if (document.exitPointerLock) document.exitPointerLock();
+        
+        menuScreen.classList.remove('hidden');
+        gameUI.classList.add('hidden');
+        resultUI.classList.add('hidden');
+        menuTitle.classList.remove('hidden');
+        keys = {};
+    }
+
+    function initGame(mode) {
+        isTestMode = mode === 'test';
+        gameMode = isTestMode ? 'vs_ai' : mode;
+        score1 = 0; score2 = 0; lives1 = 5; lives2 = 5; bombs1 = 1; bombs2 = 1;
+        scoreForNextBomb1 = 100; scoreForNextBomb2 = 100; stun1 = 0; stun2 = 0;
+        currentBaseSpeed = INITIAL_BALL_SPEED;
+        p1ScoreEl.textContent = 0; p2ScoreEl.textContent = 0;
+        p1LivesEl.textContent = 5; p2LivesEl.textContent = 5;
+        updateBombUI();
+        resultUI.classList.add('hidden');
+        menuTitle.classList.remove('hidden');
+        const rightUI = document.getElementById('right-ui');
+        if (isTestMode) {
+            testIndicator.classList.remove('hidden');
+            p1LivesContainer.style.visibility = 'hidden'; p2LivesContainer.style.visibility = 'hidden';
+            rightUI.style.opacity = '1';
+            document.getElementById('p1-label').textContent = "TEST (L)";
+            document.getElementById('p2-label').textContent = "TEST (R)";
+        } else {
+            testIndicator.classList.add('hidden');
+            p1LivesContainer.style.visibility = 'visible'; p2LivesContainer.style.visibility = 'visible';
+            if (mode === 'solo') {
+                rightUI.style.opacity = '0';
+                document.getElementById('p1-label').textContent = "PLAYER";
+            } else {
+                rightUI.style.opacity = '1';
+                document.getElementById('p1-label').textContent = "P1 (LEFT)";
+                document.getElementById('p2-label').textContent = mode === 'vs_ai' ? "AI (RIGHT)" : "P2 (RIGHT)";
+            }
+        }
+        resize(); initBricks(); resetGameBalls();
+        gameRunning = true; menuScreen.classList.add('hidden'); gameUI.classList.remove('hidden');
+        if (animationId) cancelAnimationFrame(animationId);
+        draw();
+    }
+
+    function collisionDetection(ball) {
+        if (gameMode === 'solo') {
+            const bw = (canvas.width - 60 - (BRICK_PADDING * (SOLO_COLS - 1))) / SOLO_COLS;
+            const bh = 15; const offT = 60; const offL = 30;
+            let active = 0;
+            for (let c = 0; c < SOLO_COLS; c++) {
+                for (let r = 0; r < SOLO_ROWS; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        active++;
+                        const bx = c * (bw + BRICK_PADDING) + offL;
+                        const by = r * (bh + BRICK_PADDING) + offT;
+                        if (ball.x > bx && ball.x < bx + bw && ball.y > by && ball.y < by + bh) {
+                            ball.dy = -ball.dy; b.status = 0; score1 += 5; p1ScoreEl.textContent = score1;
+                            checkBombGrant();
+                        }
+                    }
+                }
+            }
+            if (active === 0) onBricksCleared();
+        } else {
+            const bw = 15, bh = (canvas.height - 60 - (BRICK_PADDING * (VS_ROWS - 1))) / VS_ROWS;
+            const offL = (canvas.width / 2) - ((VS_COLS * (bw + BRICK_PADDING)) / 2);
+            const offT = 30;
+            let active = 0;
+            for (let c = 0; c < VS_COLS; c++) {
+                for (let r = 0; r < VS_ROWS; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        active++;
+                        const bx = c * (bw + BRICK_PADDING) + offL;
+                        const by = r * (bh + BRICK_PADDING) + offT;
+                        if (ball.x > bx && ball.x < bx + bw && ball.y > by && ball.y < by + bh) {
+                            ball.dx = -ball.dx; b.status = 0;
+                            if (ball.dx > 0) { score1 += 5; p1ScoreEl.textContent = score1; }
+                            else { score2 += 5; p2ScoreEl.textContent = score2; }
+                            checkBombGrant();
+                        }
+                    }
+                }
+            }
+            if (active === 0) onBricksCleared();
+        }
+    }
+
+    function draw() {
+        if (!gameRunning) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        ctx.setLineDash([10, 10]);
+        if (gameMode === 'solo') { ctx.moveTo(0, 50); ctx.lineTo(canvas.width, 50); }
+        else { ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height); }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Bricks
+        if (gameMode === 'solo') {
+            const bw = (canvas.width - 60 - (BRICK_PADDING * (SOLO_COLS - 1))) / SOLO_COLS;
+            const bh = 15; const offT = 60, offL = 30;
+            for (let c = 0; c < SOLO_COLS; c++) {
+                for (let r = 0; r < SOLO_ROWS; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        ctx.beginPath();
+                        ctx.fillStyle = b.color;
+                        ctx.roundRect(c * (bw + BRICK_PADDING) + offL, r * (bh + BRICK_PADDING) + offT, bw, bh, 2);
+                        ctx.fill();
+                    }
+                }
+            }
+        } else {
+            const bw = 15, bh = (canvas.height - 60 - (BRICK_PADDING * (VS_ROWS - 1))) / VS_ROWS;
+            const offL = (canvas.width / 2) - ((VS_COLS * (bw + BRICK_PADDING)) / 2);
+            const offT = 30;
+            for (let c = 0; c < VS_COLS; c++) {
+                for (let r = 0; r < VS_ROWS; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        ctx.beginPath();
+                        ctx.fillStyle = b.color;
+                        ctx.roundRect(c * (bw + BRICK_PADDING) + offL, r * (bh + BRICK_PADDING) + offT, bw, bh, 2);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        // Paddles
+        if (gameMode === 'solo') {
+            ctx.beginPath();
+            ctx.fillStyle = (stun1 > 0) ? "#64748b" : "#3b82f6";
+            ctx.roundRect(p1Pos, canvas.height - PADDLE_THICKNESS - 20, PADDLE_LENGTH, PADDLE_THICKNESS, 5);
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.fillStyle = (stun1 > 0) ? "#64748b" : "#3b82f6";
+            ctx.roundRect(20, p1Pos, PADDLE_THICKNESS, PADDLE_LENGTH, 5);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.fillStyle = (stun2 > 0) ? "#64748b" : "#f43f5e";
+            ctx.roundRect(canvas.width - PADDLE_THICKNESS - 20, p2Pos, PADDLE_THICKNESS, PADDLE_LENGTH, 5);
+            ctx.fill();
+        }
+
+        activeExplosions.forEach((exp, idx) => {
+            ctx.beginPath();
+            ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(234, 179, 8, ${exp.life / 30})`;
+            ctx.fill();
+            exp.radius = (1 - exp.life / 30) * exp.maxRadius;
+            exp.life--;
+            if (exp.life <= 0) activeExplosions.splice(idx, 1);
+        });
+
+        floatingTexts.forEach((ft, idx) => {
+            ctx.beginPath();
+            ctx.fillStyle = ft.color;
+            ctx.font = "bold 24px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ft.y -= 1;
+            ft.life--;
+            if (ft.life <= 0) floatingTexts.splice(idx, 1);
+        });
+
+        activeBombs.forEach((bomb, idx) => {
+            drawRocket(ctx, bomb.x, bomb.y, bomb.rotation);
+            bomb.x += bomb.dx; bomb.y += bomb.dy;
+            let triggered = false; let hitPaddle = false;
+            if (gameMode === 'solo') {
+                if (bomb.y < 50 || bomb.y > canvas.height) triggered = true;
+                else {
+                    const bw = (canvas.width - 60 - (BRICK_PADDING * (SOLO_COLS - 1))) / SOLO_COLS;
+                    const bh = 15, offT = 60, offL = 30;
+                    const c = Math.floor((bomb.x - offL) / (bw + BRICK_PADDING));
+                    const r = Math.floor((bomb.y - offT) / (bh + BRICK_PADDING));
+                    if (c >= 0 && c < SOLO_COLS && r >= 0 && r < SOLO_ROWS && bricks[c][r].status === 1) triggered = true;
+                }
+            } else {
+                if (bomb.owner === 1 && bomb.x > canvas.width - 5) {
+                    triggered = true; score2 = Math.max(0, score2 - 50); p2ScoreEl.textContent = score2;
+                    createFloatingText(canvas.width - 40, bomb.y, "-50", "#f43f5e");
+                } else if (bomb.owner === 2 && bomb.x < 5) {
+                    triggered = true; score1 = Math.max(0, score1 - 50); p1ScoreEl.textContent = score1;
+                    createFloatingText(40, bomb.y, "-50", "#3b82f6");
+                }
+                if (!triggered) {
+                    if (bomb.owner === 1) { 
+                        if (bomb.x > canvas.width - 40 && bomb.y > p2Pos && bomb.y < p2Pos + PADDLE_LENGTH) { triggered = true; hitPaddle = true; }
+                    } else { 
+                        if (bomb.x < 40 && bomb.y > p1Pos && bomb.y < p1Pos + PADDLE_LENGTH) { triggered = true; hitPaddle = true; }
+                    }
+                }
+                if (!triggered) {
+                    const bw = 15, bh = (canvas.height - 60 - (BRICK_PADDING * (VS_ROWS - 1))) / VS_ROWS;
+                    const offL = (canvas.width / 2) - ((VS_COLS * (bw + BRICK_PADDING)) / 2);
+                    const offT = 30;
+                    const c = Math.floor((bomb.x - offL) / (bw + BRICK_PADDING));
+                    const r = Math.floor((bomb.y - offT) / (bh + BRICK_PADDING));
+                    if (c >= 0 && c < VS_COLS && r >= 0 && r < VS_ROWS && bricks[c][r].status === 1) triggered = true;
+                }
+            }
+            if (triggered) { createExplosion(bomb.x, bomb.y, bomb.owner, hitPaddle); activeBombs.splice(idx, 1); }
+        });
+
+        balls.forEach((ball, index) => {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.shadowBlur = 10; ctx.shadowColor = ball.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            collisionDetection(ball);
+            if (gameMode === 'solo') {
+                if (ball.x + ball.dx > canvas.width - BALL_RADIUS || ball.x + ball.dx < BALL_RADIUS) ball.dx = -ball.dx;
+                if (ball.y + ball.dy < BALL_RADIUS) ball.dy = -ball.dy;
+                else if (ball.y + ball.dy > canvas.height - BALL_RADIUS - 20 - PADDLE_THICKNESS) {
+                    if (ball.x > p1Pos && ball.x < p1Pos + PADDLE_LENGTH) {
+                        ball.dy = -Math.abs(ball.dy);
+                        ball.dx = (ball.x - (p1Pos + PADDLE_LENGTH/2)) / (PADDLE_LENGTH/2) * currentBaseSpeed * 1.5;
+                        increaseBallSpeed(ball);
+                    } else if (ball.y + ball.dy > canvas.height) {
+                        if (!isTestMode) {
+                            lives1--; p1LivesEl.textContent = lives1;
+                            if (lives1 <= 0) endGame("GAME OVER", `最終スコア: ${score1}`, "rose");
+                            else Object.assign(ball, createBall('solo'));
+                        } else Object.assign(ball, createBall('solo'));
+                    }
+                }
+            } else {
+                if (ball.y + ball.dy > canvas.height - BALL_RADIUS || ball.y + ball.dy < BALL_RADIUS) ball.dy = -ball.dy;
+                if (ball.x + ball.dx < BALL_RADIUS + 20 + PADDLE_THICKNESS) {
+                    if (ball.y > p1Pos && ball.y < p1Pos + PADDLE_LENGTH) {
+                        ball.dx = Math.abs(ball.dx);
+                        ball.dy = (ball.y - (p1Pos + PADDLE_LENGTH/2)) / (PADDLE_LENGTH/2) * currentBaseSpeed * 1.2;
+                        increaseBallSpeed(ball);
+                    } else if (ball.x + ball.dx < 0) {
+                        if (!isTestMode) {
+                            lives1--; p1LivesEl.textContent = lives1;
+                            if (lives1 <= 0) checkWinner(); else redeployBall(index);
+                        } else redeployBall(index);
+                    }
+                }
+                if (ball.x + ball.dx > canvas.width - BALL_RADIUS - 20 - PADDLE_THICKNESS) {
+                    if (ball.y > p2Pos && ball.y < p2Pos + PADDLE_LENGTH) {
+                        ball.dx = -Math.abs(ball.dx);
+                        ball.dy = (ball.y - (p2Pos + PADDLE_LENGTH/2)) / (PADDLE_LENGTH/2) * currentBaseSpeed * 1.2;
+                        increaseBallSpeed(ball);
+                    } else if (ball.x + ball.dx > canvas.width) {
+                        if (!isTestMode) {
+                            lives2--; p2LivesEl.textContent = lives2;
+                            if (lives2 <= 0) checkWinner(); else redeployBall(index);
+                        } else redeployBall(index);
+                    }
+                }
+            }
+            ball.x += ball.dx; ball.y += ball.dy;
+        });
+
+        // Stun & Controls
+        if (stun1 > 0) stun1--;
+        else {
+            if (gameMode === 'solo') {
+                if ((keys['ArrowRight'] || keys['KeyD']) && p1Pos < canvas.width - PADDLE_LENGTH) p1Pos += PADDLE_SPEED;
+                if ((keys['ArrowLeft'] || keys['KeyA']) && p1Pos > 0) p1Pos -= PADDLE_SPEED;
+            } else {
+                if (keys['KeyW'] && p1Pos > 0) p1Pos -= PADDLE_SPEED;
+                if (keys['KeyS'] && p1Pos < canvas.height - PADDLE_LENGTH) p1Pos += PADDLE_SPEED;
+            }
+        }
+        if (stun2 > 0) stun2--;
+        else if (gameMode !== 'solo') {
+            if (gameMode === 'vs_player') {
+                if (keys['ArrowUp'] && p2Pos > 0) p2Pos -= PADDLE_SPEED;
+                if (keys['ArrowDown'] && p2Pos < canvas.height - PADDLE_LENGTH) p2Pos += PADDLE_SPEED;
+            } else {
+                let targetBall = balls.reduce((prev, curr) => (Math.abs(curr.x - canvas.width) < Math.abs(prev.x - canvas.width)) ? curr : prev);
+                const aiSpeed = 4 + (currentBaseSpeed * 0.4);
+                const targetY = targetBall.y - PADDLE_LENGTH / 2;
+                if (p2Pos < targetY - 5) p2Pos += Math.min(aiSpeed, PADDLE_SPEED);
+                else if (p2Pos > targetY + 5) p2Pos -= Math.min(aiSpeed, PADDLE_SPEED);
+                if (bombs2 > 0 && Math.random() < 0.005) launchBomb(2);
+                if (isTestMode && Math.random() < 0.02) launchBomb(2);
+            }
+        }
+        animationId = requestAnimationFrame(draw);
+    }
+
+    function checkWinner() {
+        if (score1 === score2) endGame("DRAW", `スコアは同点です: ${score1}`, "slate");
+        else if (score1 > score2) endGame(`${gameMode === 'vs_ai' ? "PLAYER" : "P1 (LEFT)"} WIN!`, `${score1} vs ${score2}`, "blue");
+        else endGame(`${gameMode === 'vs_ai' ? "AI" : "P2 (RIGHT)"} WIN!`, `${score1} vs ${score2}`, "rose");
+    }
+
+    function endGame(title, desc, themeColor) {
+        gameRunning = false; cancelAnimationFrame(animationId);
+        document.exitPointerLock = document.exitPointerLock || document.mozExitPointerLock;
+        if (document.exitPointerLock) document.exitPointerLock();
+
+        resultStatus.textContent = title; resultDetails.textContent = desc;
+        resultStatus.className = "text-6xl font-black mb-2 italic";
+        if (themeColor === "blue") resultStatus.classList.add("text-blue-400");
+        else if (themeColor === "rose") resultStatus.classList.add("text-rose-400");
+        else resultStatus.classList.add("text-slate-100");
+        resultUI.classList.remove('hidden'); menuTitle.classList.add('hidden');
+        menuScreen.classList.remove('hidden'); gameUI.classList.add('hidden');
+    }
+
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+        CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+            this.beginPath(); this.moveTo(x + r, y);
+            this.arcTo(x + w, y, x + w, y + h, r); this.arcTo(x + w, y + h, x, y + h, r);
+            this.arcTo(x, y + h, x, y, r); this.arcTo(x, y, x + w, y, r);
+            this.closePath(); return this;
+        };
+    }
+</script>
+
+</body>
+</html>
