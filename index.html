@@ -194,7 +194,7 @@
         <div id="controls-desc" class="mt-8 text-slate-500 text-sm text-center bg-slate-800/50 p-4 rounded-lg">
             <strong>操作方法</strong><br>
             P1: W/Sキー または マウス (移動) + 左Shift (ロケット) | P2: 上下矢印 (移動) + 右Shift (ロケット)<br>
-            <span class="text-yellow-400">金色: ロケット+1</span> | <span class="text-slate-200">黒色: パドルと全ステータスを交換！</span><br>
+            <span class="text-yellow-400">金色: ロケット+1</span> | <span class="text-slate-200">黒色: パドルと全ステータスを交換！ (対戦のみ)</span><br>
             <span class="text-rose-400">ロケット直撃でスタン（移動不能）！</span>
         </div>
     </div>
@@ -234,7 +234,7 @@
 
     let gameMode = 'solo';
     let isTestMode = false;
-    let p1IsRightSide = false; // パドルの物理位置と操作者の対応
+    let p1IsRightSide = false; 
 
     let score1 = 0, score2 = 0;
     let lives1 = 5, lives2 = 5;
@@ -273,10 +273,11 @@
                 let hasItem = false;
                 let isSwap = false;
 
-                if (rand < 0.02) { // 2% Swap
+                // ソロモード以外の場合のみ2%で黒ブロックを生成
+                if (gameMode !== 'solo' && rand < 0.02) { 
                     color = '#000000';
                     isSwap = true;
-                } else if (rand < 0.07) { // 5% Rocket (金色)
+                } else if (rand < 0.07) { // 5% Rocket
                     color = '#FFD700';
                     hasItem = true;
                 }
@@ -287,11 +288,11 @@
     }
 
     function swapPlayers(x, y) {
-        // フラッシュ演出
+        if (gameMode === 'solo') return; // 安全策
+
         swapFlash.style.opacity = '1';
         setTimeout(() => { swapFlash.style.opacity = '0'; }, 100);
 
-        // ステータスの交換
         [score1, score2] = [score2, score1];
         [lives1, lives2] = [lives2, lives1];
         [bombs1, bombs2] = [bombs2, bombs1];
@@ -299,10 +300,8 @@
         [p1Pos, p2Pos] = [p2Pos, p1Pos];
         [scoreForNextBomb1, scoreForNextBomb2] = [scoreForNextBomb2, scoreForNextBomb1];
         
-        // どちらがどちらを操作しているかフラグ反転
         p1IsRightSide = !p1IsRightSide;
 
-        // UI更新
         p1ScoreEl.textContent = score1;
         p2ScoreEl.textContent = score2;
         p1LivesEl.textContent = lives1;
@@ -311,7 +310,6 @@
 
         createFloatingText(x, y, "PADDLE SWAP!", "#ffffff");
         
-        // UIのラベルも一応更新して分かりやすくする
         const lLabel = document.getElementById('p1-label');
         const rLabel = document.getElementById('p2-label');
         if (!p1IsRightSide) {
@@ -346,7 +344,6 @@
     }
 
     function launchBomb(owner) {
-        // キーボード操作主体(1=左側操作, 2=右側操作)だが、スワップ中は逆転
         let actualOwner = owner;
         if (p1IsRightSide) {
             actualOwner = (owner === 1) ? 2 : 1;
@@ -474,7 +471,6 @@
             }
         }));
 
-        // 普通のブロックがない、または黒いブロックしか残っていない場合は補充
         if (normalBlocksCount === 0) {
             initBricks();
             currentBaseSpeed = Math.min(currentBaseSpeed + 0.5, MAX_BALL_SPEED - 2);
@@ -515,11 +511,10 @@
     document.addEventListener("mousemove", (e) => {
         if (!gameRunning) return;
         
-        // P1はマウス/WSで左側を操作するのがデフォだがスワップ中は右側パドルを操作
         let movement = gameMode === 'solo' ? e.movementX : e.movementY;
         if (document.pointerLockElement !== canvas) {
             const rect = canvas.getBoundingClientRect();
-            movement = 0; // マウス移動による直接指定（簡易化のためスワップ中は相対移動を推奨）
+            movement = 0; 
             let target = gameMode === 'solo' ? (e.clientX - rect.left) - PADDLE_LENGTH/2 : (e.clientY - rect.top) - PADDLE_LENGTH/2;
             if (!p1IsRightSide) { if (stun1 <= 0) p1Pos = target; }
             else { if (stun2 <= 0) p2Pos = target; }
@@ -637,15 +632,12 @@
             }
         }
 
-        // Paddles (P1は青、P2は赤。スワップで色が入れ替わるのではなく操作対象が入れ替わる)
         if (gameMode === 'solo') {
             ctx.beginPath(); ctx.fillStyle = (stun1 > 0) ? "#64748b" : "#3b82f6";
             ctx.roundRect(p1Pos, canvas.height - PADDLE_THICKNESS - 20, PADDLE_LENGTH, PADDLE_THICKNESS, 5); ctx.fill();
         } else {
-            // 左側パドル
             ctx.beginPath(); ctx.fillStyle = (stun1 > 0) ? "#64748b" : "#3b82f6";
             ctx.roundRect(20, p1Pos, PADDLE_THICKNESS, PADDLE_LENGTH, 5); ctx.fill();
-            // 右側パドル
             ctx.beginPath(); ctx.fillStyle = (stun2 > 0) ? "#64748b" : "#f43f5e";
             ctx.roundRect(canvas.width - PADDLE_THICKNESS - 20, p2Pos, PADDLE_THICKNESS, PADDLE_LENGTH, 5); ctx.fill();
         }
@@ -725,7 +717,6 @@
             ball.x += ball.dx; ball.y += ball.dy;
         });
 
-        // Controls: P1(WS/マウス) -> 左側操作(p1IsRightSide=false) or 右側操作(p1IsRightSide=true)
         if (!p1IsRightSide) {
             if (stun1 > 0) stun1--; else {
                 if (gameMode === 'solo') {
@@ -736,7 +727,6 @@
                     if (keys['KeyS'] && p1Pos < canvas.height - PADDLE_LENGTH) p1Pos += PADDLE_SPEED;
                 }
             }
-            // P2/AI担当
             if (stun2 > 0) stun2--; else {
                 if (gameMode === 'vs_player') {
                     if (keys['ArrowUp'] && p2Pos > 0) p2Pos -= PADDLE_SPEED;
@@ -748,12 +738,10 @@
                 }
             }
         } else {
-            // P1が右側を操作中
             if (stun2 > 0) stun2--; else {
                 if (keys['KeyW'] && p2Pos > 0) p2Pos -= PADDLE_SPEED;
                 if (keys['KeyS'] && p2Pos < canvas.height - PADDLE_LENGTH) p2Pos += PADDLE_SPEED;
             }
-            // P2/AIが左側を操作中
             if (stun1 > 0) stun1--; else {
                 if (gameMode === 'vs_player') {
                     if (keys['ArrowUp'] && p1Pos > 0) p1Pos -= PADDLE_SPEED;
@@ -770,8 +758,6 @@
     }
 
     function checkWinner() {
-        let p1Final = score1, p2Final = score2;
-        // スワップ中であっても「Player1」が稼いだ最終的なスコアで判定
         if (score1 === score2) endGame("DRAW", `${score1}pts`, "slate");
         else if (score1 > score2) endGame("P1 WIN!", `${score1} vs ${score2}`, "blue");
         else endGame(gameMode === 'vs_ai' ? "AI WIN!" : "P2 WIN!", `${score1} vs ${score2}`, "rose");
